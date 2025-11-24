@@ -4,9 +4,10 @@
 #include "bp_api.h"
 #include <vector>
 
-#define FSM_SIZE 4
+#define FSM_SIZE 2
 #define START_TAG_IDX 2
 #define PC_SIZE 32
+#define FLUSH_NUM 2
 
 // State space for prediction
 enum StateSpace {
@@ -50,8 +51,13 @@ uint32_t extractBits(uint32_t num, int start_idx, int len) {
 			break;
 		}
 
-		extracted += num & 1;
+		// Copy lsb to extracted
+		extracted |= (num & 1);
+
+		// Rapid with 0 at the end (shift reg)
 		extracted = extracted << 1;
+
+		// Delete lsb of num
 		num = num >> 1;
 	}
 
@@ -85,6 +91,94 @@ ShareSpace cvtShareState(unsigned int_share) {
 	}
 
 	return NOT_USING_SHARE;
+}
+
+int calcTheoSize(int btbSize,
+				 int historySize,
+				 int tagSize,
+				 bool isGlobalHist,
+				 bool isGlobalTable) {
+
+	int size = 0;
+
+	// Entry composed of TAG + HISTORY + TARGET + VALID
+	int entrySize = tagSize + historySize + PC_SIZE + 1;
+
+	// ONE BLOCK OF FSMS
+	int fsmSize = pow(2, historySize) * FSM_SIZE;
+
+	if (isGlobalHist) {
+		// GLOBAL HISTORY
+		size += historySize; // One time for global history
+
+		if (isGlobalTable) {
+			// GLOBAL FSMS
+			size += fsmSize; // ONE FSM BLOCK
+			return size;
+		} 
+		
+		// LOCAL FSMS
+		size += (entrySize - historySize) * btbSize; // GLOBAL HISTORY
+		size += btbSize * fsmSize; // FSMS FOR ALL BLOCKS
+
+		return size;
+	}
+
+	// LOCAL HISTORY
+	if (isGlobalTable) {
+		// GLOBAL FSMS
+
+		size += entrySize * btbSize;
+		size += fsmSize; // GLOBAL FSMS
+
+		return size;
+	} 
+		
+	// LOCAL FSMS
+
+	size += entrySize * btbSize;
+	size += btbSize * fsmSize;
+
+	return size;
+}
+
+
+void updateFSM(StateSpace& state, bool taken, SIM_stats& stats) {
+	if (taken) {
+		switch (state) {
+			case SNT:
+				stats.flush_num += FLUSH_NUM;
+				state = WNT;
+				break;
+			case WNT:
+				stats.flush_num += FLUSH_NUM;
+				state = WT;
+				break;
+			case WT:
+				state = ST;
+				break;
+			default:
+				state = ST;
+				break;
+		}
+	} else {
+		switch (state) {
+			case ST:
+				state = WT;
+				stats.flush_num += FLUSH_NUM;
+				break;
+			case WT:
+				state = WNT;
+				stats.flush_num += FLUSH_NUM;
+				break;
+			case WNT:
+				state = SNT;
+				break;
+			default:
+				state = SNT;
+				break;
+		}
+	}
 }
 
 class BTB_Entry {
@@ -140,6 +234,25 @@ class BTB_Entry {
 			return this->localHistory;
 		}
 
+		bool compareTag(uint32_t tag) {
+			return this->getTag() == tag;
+		}
+
+		void addLocalHistory(bool taken, int histSize) {
+			this->localHistory << 1;
+			this->localHistory |= taken;
+
+			// DELETE OLD HISTORY
+			uint32_t mask = -1; // mask = 32'b111....
+			mask = mask >> (PC_SIZE - histSize);
+
+			localHistory &= mask;
+		}
+
+		StateSpace& getLocalFSM(uint32_t history) {
+			return this->localFSM.at(history);
+		}
+
 };
 
 class BTB {
@@ -158,6 +271,8 @@ class BTB {
 	std::vector<StateSpace> sharedFSM;
 
 	std::vector<BTB_Entry> entries;
+
+	SIM_stats stats;
 
 	public:
 		BTB(unsigned btbSize,
@@ -187,6 +302,14 @@ class BTB {
 				for (int i = 0; i < pow(2, historySize); i++) {
 					sharedFSM.at(i) = this->defFsmState;
 				}
+
+				this->stats.flush_num = 0;
+				this->stats.br_num = 0;
+				this->stats.size = calcTheoSize(this->btbSize,
+										   this->historySize,
+										   this->tagSize,
+										   this->isGlobalHist,
+										   this->isGlobalTable);	
 		}
 
 		int getBtbSize() {
@@ -229,6 +352,60 @@ class BTB {
 			return this->historySize;
 		}
 
+		StateSpace getDefFsmState() {
+			return this->defFsmState;
+		}
+
+		StateSpace& getSharedFSM(uint32_t pc, uint32_t history) {
+			uint32_t idx_fsm;
+			uint32_t relevantCut;
+
+			// CHECK SHARE STATE
+			switch (this->shared) {
+				case USING_SHARE_LSB:
+					relevantCut = extractBits(pc, 
+											  START_TAG_IDX, 
+											  btb.getHistSize());
+					idx_fsm = history ^ relevantCut;
+					break;
+				
+				case USING_SHARE_MID:
+					relevantCut = extractBits(pc, 
+											  PC_SIZE / 2, 
+											  btb.getHistSize());
+
+					idx_fsm = history ^ relevantCut;
+					break;
+				
+				// NO USING SHARE
+				default: 
+					idx_fsm = history;
+					break;
+			}
+
+			return this->sharedFSM.at(idx_fsm);
+
+		}
+
+		void addGlobalHistory(bool taken, int histSize) {
+			this->sharedHistory << 1;
+			this->sharedHistory |= taken;
+
+			// DELETE OLD HISTORY
+			uint32_t mask = -1; // mask = 32'b111....
+			mask = mask >> (PC_SIZE - histSize);
+
+			sharedHistory &= mask;
+		}
+
+		void updateBrNum() {
+			this->stats.br_num += 1;
+		}
+
+		SIM_stats& getStatsRef() {
+			return this->stats;
+		}
+
 };
 
 BTB btb;
@@ -244,6 +421,8 @@ int BP_init(unsigned btbSize,
 
 				btb = BTB(btbSize, historySize, tagSize, fsmState,
 						  isGlobalHist, isGlobalTable, Shared);
+				
+				
 	return 0;
 }
 
@@ -272,28 +451,9 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 			//LOCAL HISTORY - LSHARE
 			history = entry.getLocalHistory();
 		}
-		
-		uint32_t idx;
-		uint32_t relevantCut;
 
-		// CHECK SHARE STATE
-		switch (btb.getSharedType()) {
-			case USING_SHARE_LSB:
-				relevantCut = extractBits(pc, START_TAG_IDX, btb.getHistSize());
-				break;
-			
-			case USING_SHARE_MID:
-				relevantCut = extractBits(pc, PC_SIZE / 2, btb.getHistSize());
-				break;
-			
-			// NO USING SHARE
-			default: 
-				idx = history;
-				break;
-		}
+		state = btb.getSharedFSM(pc, history);
 
-		idx = history ^ relevantCut;
-		state = btb.getGlobalState(idx);
 	} else { // LOCAL FSM
 
 		// GLOBAL HISTORY
@@ -311,13 +471,73 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 }
 
 void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
-	
+	// ADD BR+1
+	btb.updateBrNum();
 
-	return;
+	int idx_len = log(btb.getBtbSize()); 
+	uint32_t idx = extractBits(pc, START_TAG_IDX, idx_len);
+	uint32_t tag = extractBits(pc,
+								START_TAG_IDX + idx_len,
+								btb.getTagSize());
+
+	BTB_Entry entry = btb.getEntryAtIdx(idx);
+
+	// CHECKS IF EXSITS
+	if (entry.isEmpty()) {
+		entry.ResetEntry(tag,
+							targetPc, 
+							btb.getHistSize(),
+							btb.getDefFsmState());
+	}
+
+	// CHECK FOR COLLISION
+	if (!entry.compareTag(tag)) {
+		entry.ResetEntry(tag,
+							targetPc, 
+							btb.getHistSize(),
+							btb.getDefFsmState());
+	}
+
+	// GLOBAL HISTORY
+	if (btb.isGlobalHistory()) {
+		btb.addGlobalHistory(taken, btb.getHistSize());
+
+		if (btb.isGlobalFSM()) {
+			// UPDATE GLOBAL FSM
+			StateSpace& globState = btb.getSharedFSM(pc,
+													 btb.getGlobalHistory());
+
+			updateFSM(globState, taken, btb.getStatsRef());
+
+		} else {
+			// UPDATE LOCAL FSM
+			StateSpace& locState = entry.getLocalFSM(btb.getGlobalHistory());
+			updateFSM(locState, taken, btb.getStatsRef());
+		}
+
+	} else {
+	// LOCAL HISTORY
+
+		// UPDATE LOCAL HISTORY + FSM (L/G)
+		entry.addLocalHistory(taken, btb.getHistSize());
+
+		if (btb.isGlobalFSM()) {
+			// UPDATE GLOBAL FSM
+			StateSpace& globState = btb.getSharedFSM(pc,
+													 entry.getLocalHistory());
+			updateFSM(globState, taken, btb.getStatsRef());
+		} else {
+			// UPDATE LOCAL FSM
+			StateSpace& locState = entry.getLocalFSM(entry.getLocalHistory());
+			updateFSM(locState, taken, btb.getStatsRef());
+		}
+
+	}
 }
 
 void BP_GetStats(SIM_stats *curStats){
-	return;
+	SIM_stats stats = btb.getStatsRef();
+	curStats->br_num =  stats.br_num;
+	curStats->flush_num = stats.flush_num;
+	curStats->size = stats.size;
 }
-
-
