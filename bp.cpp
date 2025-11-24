@@ -365,14 +365,14 @@ class BTB {
 				case USING_SHARE_LSB:
 					relevantCut = extractBits(pc, 
 											  START_TAG_IDX, 
-											  btb.getHistSize());
+											  this->getHistSize());
 					idx_fsm = history ^ relevantCut;
 					break;
 				
 				case USING_SHARE_MID:
 					relevantCut = extractBits(pc, 
 											  PC_SIZE / 2, 
-											  btb.getHistSize());
+											  this->getHistSize());
 
 					idx_fsm = history ^ relevantCut;
 					break;
@@ -408,7 +408,7 @@ class BTB {
 
 };
 
-BTB btb;
+BTB* btb;
 
 // WHAT WE ACTUALLY SHOULD IMPLEMENT
 int BP_init(unsigned btbSize, 
@@ -419,7 +419,7 @@ int BP_init(unsigned btbSize,
 			bool isGlobalTable, 
 			int Shared){
 
-				btb = BTB(btbSize, historySize, tagSize, fsmState,
+				btb = new BTB(btbSize, historySize, tagSize, fsmState,
 						  isGlobalHist, isGlobalTable, Shared);
 				
 				
@@ -427,11 +427,11 @@ int BP_init(unsigned btbSize,
 }
 
 bool BP_predict(uint32_t pc, uint32_t *dst){
-	int idx_len = log(btb.getBtbSize()); 
+	int idx_len = log(btb->getBtbSize()); 
 	uint32_t idx = extractBits(pc, START_TAG_IDX, idx_len);
-	uint32_t tag = extractBits(pc, START_TAG_IDX + idx_len, btb.getTagSize());
+	uint32_t tag = extractBits(pc, START_TAG_IDX + idx_len, btb->getTagSize());
 
-	BTB_Entry entry = btb.getEntryAtIdx(idx);
+	BTB_Entry entry = btb->getEntryAtIdx(idx);
 
 	if (entry.isEmpty()) {
 		*dst = pc + 4;
@@ -440,29 +440,29 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 
 	StateSpace state;
 	// GLOBAL FSM
-	if (btb.isGlobalFSM()) {
+	if (btb->isGlobalFSM()) {
 
 		uint32_t history;
 
-		if (btb.isGlobalHistory()) {
+		if (btb->isGlobalHistory()) {
 			// GLOBAL HISTORY - GSHARE
-			history = btb.getGlobalHistory();
+			history = btb->getGlobalHistory();
 		} else {
 			//LOCAL HISTORY - LSHARE
 			history = entry.getLocalHistory();
 		}
 
-		state = btb.getSharedFSM(pc, history);
+		state = btb->getSharedFSM(pc, history);
 
 	} else { // LOCAL FSM
 
 		// GLOBAL HISTORY
-		if(btb.isGlobalHistory()) {
-			state = entry.getLocalState(btb.getGlobalHistory());
+		if(btb->isGlobalHistory()) {
+			state = entry.getLocalState(btb->getGlobalHistory());
 		}
 
 		// LOCAL HISTORY
-		if(btb.isGlobalHistory()) {
+		if(btb->isGlobalHistory()) {
 			state = entry.getLocalState(entry.getLocalHistory());
 		}
 	}
@@ -472,72 +472,74 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 
 void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 	// ADD BR+1
-	btb.updateBrNum();
+	btb->updateBrNum();
 
-	int idx_len = log(btb.getBtbSize()); 
+	int idx_len = log(btb->getBtbSize()); 
 	uint32_t idx = extractBits(pc, START_TAG_IDX, idx_len);
 	uint32_t tag = extractBits(pc,
 								START_TAG_IDX + idx_len,
-								btb.getTagSize());
+								btb->getTagSize());
 
-	BTB_Entry entry = btb.getEntryAtIdx(idx);
+	BTB_Entry entry = btb->getEntryAtIdx(idx);
 
 	// CHECKS IF EXSITS
 	if (entry.isEmpty()) {
 		entry.ResetEntry(tag,
 							targetPc, 
-							btb.getHistSize(),
-							btb.getDefFsmState());
+							btb->getHistSize(),
+							btb->getDefFsmState());
 	}
 
 	// CHECK FOR COLLISION
 	if (!entry.compareTag(tag)) {
 		entry.ResetEntry(tag,
 							targetPc, 
-							btb.getHistSize(),
-							btb.getDefFsmState());
+							btb->getHistSize(),
+							btb->getDefFsmState());
 	}
 
 	// GLOBAL HISTORY
-	if (btb.isGlobalHistory()) {
-		btb.addGlobalHistory(taken, btb.getHistSize());
+	if (btb->isGlobalHistory()) {
+		btb->addGlobalHistory(taken, btb->getHistSize());
 
-		if (btb.isGlobalFSM()) {
+		if (btb->isGlobalFSM()) {
 			// UPDATE GLOBAL FSM
-			StateSpace& globState = btb.getSharedFSM(pc,
-													 btb.getGlobalHistory());
+			StateSpace& globState = btb->getSharedFSM(pc,
+													 btb->getGlobalHistory());
 
-			updateFSM(globState, taken, btb.getStatsRef());
+			updateFSM(globState, taken, btb->getStatsRef());
 
 		} else {
 			// UPDATE LOCAL FSM
-			StateSpace& locState = entry.getLocalFSM(btb.getGlobalHistory());
-			updateFSM(locState, taken, btb.getStatsRef());
+			StateSpace& locState = entry.getLocalFSM(btb->getGlobalHistory());
+			updateFSM(locState, taken, btb->getStatsRef());
 		}
 
 	} else {
 	// LOCAL HISTORY
 
 		// UPDATE LOCAL HISTORY + FSM (L/G)
-		entry.addLocalHistory(taken, btb.getHistSize());
+		entry.addLocalHistory(taken, btb->getHistSize());
 
-		if (btb.isGlobalFSM()) {
+		if (btb->isGlobalFSM()) {
 			// UPDATE GLOBAL FSM
-			StateSpace& globState = btb.getSharedFSM(pc,
+			StateSpace& globState = btb->getSharedFSM(pc,
 													 entry.getLocalHistory());
-			updateFSM(globState, taken, btb.getStatsRef());
+			updateFSM(globState, taken, btb->getStatsRef());
 		} else {
 			// UPDATE LOCAL FSM
 			StateSpace& locState = entry.getLocalFSM(entry.getLocalHistory());
-			updateFSM(locState, taken, btb.getStatsRef());
+			updateFSM(locState, taken, btb->getStatsRef());
 		}
 
 	}
 }
 
 void BP_GetStats(SIM_stats *curStats){
-	SIM_stats stats = btb.getStatsRef();
+	SIM_stats stats = btb->getStatsRef();
 	curStats->br_num =  stats.br_num;
 	curStats->flush_num = stats.flush_num;
 	curStats->size = stats.size;
+
+	delete btb;
 }
