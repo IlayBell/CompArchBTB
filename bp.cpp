@@ -93,30 +93,36 @@ int calcTheoSize(int btbSize,
 				 int historySize,
 				 int tagSize,
 				 bool isGlobalHist,
-				 bool isGlobalTable) {
-
-	int entrySize = tagSize + PC_SIZE + 1;
+				 bool isGlobalFsm) {
+	
+	// Entry = tag + target + valid
+	int entrySize = tagSize + PC_SIZE - 2 + 1;
+	
+	// #FSM * FSM_SIZE(2bits)
     int fsmBlockSize = pow(2, historySize) * FSM_SIZE;
-    int size = 0;
 
+	int size = btbSize * entrySize; // Table of preds
+
+	// GLOBAL HISTORY
     if (isGlobalHist) {
-        size += historySize;
-        size += btbSize * entrySize;
-        if (isGlobalTable) {
-            size += fsmBlockSize;
+        size += historySize; // History once
+        
+
+        if (isGlobalFsm) {
+            size += fsmBlockSize; // FSMs once
         } else {
-            size += btbSize * fsmBlockSize;
+            size += btbSize * fsmBlockSize; // FSMs for each entry
         }
         return size;
     }
 
-    size += btbSize * entrySize;
-    if (isGlobalTable) {
+	// LOCAL HISTORY
+    if (isGlobalFsm) {
         size += fsmBlockSize;
     } else {
         size += btbSize * fsmBlockSize;
     }
-	
+
 	return size;
 }
 
