@@ -467,8 +467,15 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 		}
 	}
 	
-	*dst = entry.getTarget();
-	return (state == ST || state == WT);	
+	bool pred_taken = state == ST || state == WT;
+	
+	if (pred_taken) {
+		*dst = entry.getTarget();
+	} else {
+		*dst = pc + 4;
+	}
+	
+	return pred_taken;	
 }
 
 void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
