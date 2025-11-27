@@ -24,7 +24,7 @@ enum ShareSpace {
 	USING_SHARE_MID = 2
 };
 
-unsigned int pow(int base, int exp) {
+int pow(int base, int exp) {
 	if (exp == 0) {
 		return 1;
 	}
@@ -33,7 +33,7 @@ unsigned int pow(int base, int exp) {
 }
 
 // LOG 2
-unsigned int log(int x) {
+int log(int x) {
 	if (x == 1) {
 		return 0;
 	}
@@ -46,16 +46,12 @@ uint32_t extractBits(uint32_t num, int start_idx, int len) {
 
 	num = num >> start_idx;
 
-	for (int i = 0; i < len; i++) {
-		if (num == 0) {
-			break;
-		}
+	for (int i = 0; i < len; i++) {	
+		// Rapid with 0 at the end (shift reg)
+		extracted = extracted << 1;
 
 		// Copy lsb to extracted
 		extracted |= (num & 1);
-
-		// Rapid with 0 at the end (shift reg)
-		extracted = extracted << 1;
 
 		// Delete lsb of num
 		num = num >> 1;
