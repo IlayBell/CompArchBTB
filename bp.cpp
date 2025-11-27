@@ -421,7 +421,7 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 	uint32_t idx = extractBits(pc, START_TAG_IDX, idx_len);
 	uint32_t tag = extractBits(pc, START_TAG_IDX + idx_len, btb->getTagSize());
 
-	BTB_Entry entry = btb->getEntryAtIdx(idx);
+	BTB_Entry& entry = btb->getEntryAtIdx(idx);
 
 	if (entry.isEmpty() || entry.compareTag(tag)) {
 		*dst = pc + 4;
@@ -470,7 +470,7 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 								START_TAG_IDX + idx_len,
 								btb->getTagSize());
 
-	BTB_Entry entry = btb->getEntryAtIdx(idx);
+	BTB_Entry& entry = btb->getEntryAtIdx(idx);
 
 	// CHECKS IF EXSITS
 	if (entry.isEmpty()) {
