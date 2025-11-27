@@ -95,8 +95,8 @@ int calcTheoSize(int btbSize,
 				 bool isGlobalHist,
 				 bool isGlobalFsm) {
 	
-	// Entry = tag + target + valid
-	int entrySize = tagSize + PC_SIZE - 2 + 1;
+	// Entry = tag + target(aligned 4 bits) + valid
+	int entrySize = tagSize + (PC_SIZE-2) + 1;
 	
 	// #FSM * FSM_SIZE(2bits)
     int fsmBlockSize = pow(2, historySize) * FSM_SIZE;
@@ -111,7 +111,7 @@ int calcTheoSize(int btbSize,
         if (isGlobalFsm) {
             size += fsmBlockSize; // FSMs once
         } else {
-            size += btbSize * fsmBlockSize; // FSMs for each entry
+            size += (btbSize-1) * fsmBlockSize; // FSMs for each entry
         }
         return size;
     }
@@ -120,7 +120,7 @@ int calcTheoSize(int btbSize,
     if (isGlobalFsm) {
         size += fsmBlockSize;
     } else {
-        size += btbSize * fsmBlockSize;
+        size += (btbSize-1) * fsmBlockSize;
     }
 
 	return size;
