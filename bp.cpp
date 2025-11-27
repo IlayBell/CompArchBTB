@@ -111,7 +111,7 @@ int calcTheoSize(int btbSize,
         if (isGlobalFsm) {
             size += fsmBlockSize; // FSMs once
         } else {
-            size += (btbSize+1) * fsmBlockSize; // FSMs for each entry
+            size += btbSize * (fsmBlockSize+1); // FSMs for each entry
         }
         return size;
     }
@@ -120,7 +120,7 @@ int calcTheoSize(int btbSize,
     if (isGlobalFsm) {
         size += fsmBlockSize;
     } else {
-        size += (btbSize+1) * fsmBlockSize;
+        size += btbSize * (fsmBlockSize + 1);
     }
 
 	return size;
