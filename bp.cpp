@@ -207,10 +207,6 @@ class BTB_Entry {
 				}
 		}
 
-		void setTargetPc(uint32_t targetPc) {
-			this->target = targetPc;
-		}
-
 		uint32_t getTag() {
 			return this->tag;
 		}
@@ -244,6 +240,10 @@ class BTB_Entry {
 
 		StateSpace& getLocalFSM(uint32_t history) {
 			return this->localFSM.at(history);
+		}
+
+		uint32_t getTarget() {
+			return this->target;
 		}
 
 };
@@ -467,6 +467,7 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 		}
 	}
 	
+	*dst = entry.getTarget();
 	return (state == ST || state == WT);	
 }
 
@@ -494,8 +495,6 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 						 btb->getHistSize(),
 						 btb->getDefFsmState());
 	}
-
-	entry.setTargetPc(targetPc);
 
 	// GLOBAL HISTORY
 	if (btb->isGlobalHistory()) {
