@@ -423,7 +423,7 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 
 	BTB_Entry& entry = btb->getEntryAtIdx(idx);
 
-	if (entry.isEmpty() || entry.compareTag(tag)) {
+	if (entry.isEmpty() || !entry.compareTag(tag)) {
 		*dst = pc + 4;
 		return false;
 	}
@@ -449,10 +449,8 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 		// GLOBAL HISTORY
 		if(btb->isGlobalHistory()) {
 			state = entry.getLocalState(btb->getGlobalHistory());
-		}
-
-		// LOCAL HISTORY
-		if(btb->isGlobalHistory()) {
+		} else {
+			// LOCAL HISTORY
 			state = entry.getLocalState(entry.getLocalHistory());
 		}
 	}
@@ -472,20 +470,12 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 
 	BTB_Entry& entry = btb->getEntryAtIdx(idx);
 
-	// CHECKS IF EXSITS
-	if (entry.isEmpty()) {
+	// CHECKS IF EXSITS AND NOT COLLISION
+	if (entry.isEmpty() || !entry.compareTag(tag)) {
 		entry.ResetEntry(tag,
-							targetPc, 
-							btb->getHistSize(),
-							btb->getDefFsmState());
-	}
-
-	// CHECK FOR COLLISION
-	if (!entry.compareTag(tag)) {
-		entry.ResetEntry(tag,
-							targetPc, 
-							btb->getHistSize(),
-							btb->getDefFsmState());
+						 targetPc, 
+						 btb->getHistSize(),
+						 btb->getDefFsmState());
 	}
 
 	// GLOBAL HISTORY
