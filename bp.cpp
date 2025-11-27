@@ -239,7 +239,7 @@ class BTB_Entry {
 		}
 
 		void addLocalHistory(bool taken, int histSize) {
-			this->localHistory << 1;
+			this->localHistory <<= 1;
 			this->localHistory |= taken;
 
 			// DELETE OLD HISTORY
@@ -281,9 +281,10 @@ class BTB {
 			unsigned fsmState, 
 			bool isGlobalHist,
 			bool isGlobalTable,
-			int Shared) : entries(btbSize, BTB_Entry(historySize, 
-													 cvtFsmState(fsmState))), 
-						  sharedFSM(pow(2, historySize)) {
+			int Shared) : 	sharedFSM(pow(2, historySize)),
+							entries(btbSize, BTB_Entry(historySize, 
+													cvtFsmState(fsmState))) 
+						   {
 
 				this->btbSize = btbSize;
 				this->historySize = historySize;
@@ -388,7 +389,7 @@ class BTB {
 		}
 
 		void addGlobalHistory(bool taken, int histSize) {
-			this->sharedHistory << 1;
+			this->sharedHistory <<= 1;
 			this->sharedHistory |= taken;
 
 			// DELETE OLD HISTORY
@@ -433,7 +434,7 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 
 	BTB_Entry entry = btb->getEntryAtIdx(idx);
 
-	if (entry.isEmpty()) {
+	if (entry.isEmpty() || entry.compareTag(tag)) {
 		*dst = pc + 4;
 		return false;
 	}
