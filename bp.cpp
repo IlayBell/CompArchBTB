@@ -190,7 +190,8 @@ class BTB_Entry {
 	bool is_empty;
 
 	public:
-		BTB_Entry(unsigned historySize, StateSpace defFsmState) {
+		BTB_Entry(unsigned historySize, StateSpace defFsmState) :
+												localFSM(pow(2, historySize)) {
 			this->tag = 0;
 			this->target = 0;
 			this->localHistory = 0;
