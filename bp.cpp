@@ -96,44 +96,28 @@ int calcTheoSize(int btbSize,
 				 bool isGlobalTable) {
 
 	int size = 0;
+    int entryBits = tagSize + PC_SIZE + 1;
+    int fsmBits = pow(2, historySize) * FSM_SIZE;
 
-	// Entry composed of TAG + HISTORY + TARGET + VALID
-	int entrySize = tagSize + historySize + PC_SIZE + 1;
-
-	// ONE BLOCK OF FSMS
-	int fsmSize = pow(2, historySize) * FSM_SIZE;
-
-	if (isGlobalHist) {
-		// GLOBAL HISTORY
-		size += historySize; // One time for global history
-
-		if (isGlobalTable) {
-			// GLOBAL FSMS
-			size += fsmSize; // ONE FSM BLOCK
-			return size;
-		} 
-		
-		// LOCAL FSMS
-		size += (entrySize - historySize) * btbSize; // GLOBAL HISTORY
-		size += btbSize * fsmSize; // FSMS FOR ALL BLOCKS
-
-		return size;
-	}
-
-	// LOCAL HISTORY
-	if (isGlobalTable) {
-		// GLOBAL FSMS
-
-		size += entrySize * btbSize;
-		size += fsmSize; // GLOBAL FSMS
-
-		return size;
-	} 
-		
-	// LOCAL FSMS
-
-	size += entrySize * btbSize;
-	size += btbSize * fsmSize;
+    if (isGlobalHist) {
+        size += historySize;
+        if (isGlobalTable) {
+            size += fsmBits;
+            size += btbSize * entryBits;
+        } else {
+            size += btbSize * fsmBits;
+            size += btbSize * entryBits;
+        }
+    } else {
+        entryBits += historySize;
+        if (isGlobalTable) {
+            size += fsmBits;
+            size += btbSize * entryBits;
+        } else {
+            size += btbSize * fsmBits;
+            size += btbSize * entryBits;
+        }
+    }
 
 	return size;
 }
