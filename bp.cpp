@@ -423,6 +423,7 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 
 	BTB_Entry& entry = btb->getEntryAtIdx(idx);
 
+	// CHECKS IF EXSITS AND NOT COLLISION
 	if (entry.isEmpty() || !entry.compareTag(tag)) {
 		*dst = pc + 4;
 		return false;
@@ -480,8 +481,7 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 
 	// GLOBAL HISTORY
 	if (btb->isGlobalHistory()) {
-		btb->addGlobalHistory(taken, btb->getHistSize());
-
+		
 		if (btb->isGlobalFSM()) {
 			// UPDATE GLOBAL FSM
 			StateSpace& globState = btb->getSharedFSM(pc,
@@ -495,11 +495,12 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 			updateFSM(locState, taken, btb->getStatsRef());
 		}
 
+		// UPDATE GLOBAL HISTORY + FSM (L/G)
+		btb->addGlobalHistory(taken, btb->getHistSize());
+
 	} else {
 	// LOCAL HISTORY
 
-		// UPDATE LOCAL HISTORY + FSM (L/G)
-		entry.addLocalHistory(taken, btb->getHistSize());
 
 		if (btb->isGlobalFSM()) {
 			// UPDATE GLOBAL FSM
@@ -511,6 +512,9 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 			StateSpace& locState = entry.getLocalFSM(entry.getLocalHistory());
 			updateFSM(locState, taken, btb->getStatsRef());
 		}
+
+		// UPDATE LOCAL HISTORY + FSM (L/G)
+		entry.addLocalHistory(taken, btb->getHistSize());
 
 	}
 }
