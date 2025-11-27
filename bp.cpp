@@ -24,7 +24,7 @@ enum ShareSpace {
 	USING_SHARE_MID = 2
 };
 
-int pow(int base, int exp) {
+unsigned int pow(int base, int exp) {
 	if (exp == 0) {
 		return 1;
 	}
@@ -33,7 +33,7 @@ int pow(int base, int exp) {
 }
 
 // LOG 2
-int log(int x) {
+unsigned int log(int x) {
 	if (x == 1) {
 		return 0;
 	}
@@ -191,16 +191,12 @@ class BTB_Entry {
 
 	public:
 		BTB_Entry(unsigned historySize, StateSpace defFsmState) :
-												localFSM(pow(2, historySize)) {
+									localFSM(pow(2, historySize), defFsmState) {
 			this->tag = 0;
 			this->target = 0;
 			this->localHistory = 0;
 
 			this->is_empty = true;
-
-			for (int i = 0; i < pow(2, historySize); i++) {
-				localFSM.at(i) = defFsmState;
-			}
 		}
 
 		void ResetEntry(uint32_t tag,
@@ -282,10 +278,10 @@ class BTB {
 			unsigned fsmState, 
 			bool isGlobalHist,
 			bool isGlobalTable,
-			int Shared) : 	sharedFSM(pow(2, historySize)),
-							entries(btbSize, BTB_Entry(historySize, 
+			int Shared) : sharedFSM(pow(2, historySize), cvtFsmState(fsmState)),
+						  entries(btbSize, BTB_Entry(historySize, 
 													cvtFsmState(fsmState))) 
-						   {
+						  {
 
 				this->btbSize = btbSize;
 				this->historySize = historySize;
@@ -300,10 +296,6 @@ class BTB {
 
 				// Defines share method as enum const
 				this->shared = cvtShareState(Shared);
-
-				for (int i = 0; i < pow(2, historySize); i++) {
-					sharedFSM.at(i) = this->defFsmState;
-				}
 
 				this->stats.flush_num = 0;
 				this->stats.br_num = 0;
