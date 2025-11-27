@@ -139,15 +139,13 @@ int calcTheoSize(int btbSize,
 }
 
 
-void updateFSM(StateSpace& state, bool taken, SIM_stats& stats) {
+void updateFSM(StateSpace& state, bool taken) {
 	if (taken) {
 		switch (state) {
 			case SNT:
-				stats.flush_num += FLUSH_NUM;
 				state = WNT;
 				break;
 			case WNT:
-				stats.flush_num += FLUSH_NUM;
 				state = WT;
 				break;
 			case WT:
@@ -161,11 +159,9 @@ void updateFSM(StateSpace& state, bool taken, SIM_stats& stats) {
 		switch (state) {
 			case ST:
 				state = WT;
-				stats.flush_num += FLUSH_NUM;
 				break;
 			case WT:
 				state = WNT;
-				stats.flush_num += FLUSH_NUM;
 				break;
 			case WNT:
 				state = SNT;
@@ -195,7 +191,7 @@ class BTB_Entry {
 			this->is_empty = true;
 		}
 
-		void ResetEntry(uint32_t tag,
+		void resetEntry(uint32_t tag,
 						uint32_t target,
 						unsigned historySize,
 						StateSpace defFsmState) {
@@ -209,6 +205,10 @@ class BTB_Entry {
 				for (int i = 0; i < pow(2, historySize); i++) {
 					localFSM.at(i) = defFsmState;
 				}
+		}
+
+		void setTargetPc(uint32_t targetPc) {
+			this->target = targetPc;
 		}
 
 		uint32_t getTag() {
@@ -392,10 +392,21 @@ class BTB {
 			this->stats.br_num += 1;
 		}
 
-		SIM_stats& getStatsRef() {
-			return this->stats;
+		void addFlushes() {
+			this->stats.flush_num += FLUSH_NUM;
 		}
 
+		int getStatBrNum() {
+			return this->stats.br_num;
+		}
+
+		int getStatFlushNum() {
+			return this->stats.flush_num;
+		}
+
+		int getStatMemSize() {
+			return this->stats.size;
+		}
 };
 
 BTB* btb;
@@ -463,6 +474,11 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 	// ADD BR+1
 	btb->updateBrNum();
 
+	// COUNTS MISSPREDICTIONS
+	if (targetPc != pred_dst) {
+		btb->addFlushes();
+	}
+
 	int idx_len = log(btb->getBtbSize()); 
 	uint32_t idx = extractBits(pc, START_TAG_IDX, idx_len);
 	uint32_t tag = extractBits(pc,
@@ -473,11 +489,13 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 
 	// CHECKS IF EXSITS AND NOT COLLISION
 	if (entry.isEmpty() || !entry.compareTag(tag)) {
-		entry.ResetEntry(tag,
+		entry.resetEntry(tag,
 						 targetPc, 
 						 btb->getHistSize(),
 						 btb->getDefFsmState());
 	}
+
+	entry.setTargetPc(targetPc);
 
 	// GLOBAL HISTORY
 	if (btb->isGlobalHistory()) {
@@ -487,12 +505,12 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 			StateSpace& globState = btb->getSharedFSM(pc,
 													 btb->getGlobalHistory());
 
-			updateFSM(globState, taken, btb->getStatsRef());
+			updateFSM(globState, taken);
 
 		} else {
 			// UPDATE LOCAL FSM
 			StateSpace& locState = entry.getLocalFSM(btb->getGlobalHistory());
-			updateFSM(locState, taken, btb->getStatsRef());
+			updateFSM(locState, taken);
 		}
 
 		// UPDATE GLOBAL HISTORY + FSM (L/G)
@@ -506,11 +524,11 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 			// UPDATE GLOBAL FSM
 			StateSpace& globState = btb->getSharedFSM(pc,
 													 entry.getLocalHistory());
-			updateFSM(globState, taken, btb->getStatsRef());
+			updateFSM(globState, taken);
 		} else {
 			// UPDATE LOCAL FSM
 			StateSpace& locState = entry.getLocalFSM(entry.getLocalHistory());
-			updateFSM(locState, taken, btb->getStatsRef());
+			updateFSM(locState, taken);
 		}
 
 		// UPDATE LOCAL HISTORY + FSM (L/G)
@@ -520,10 +538,9 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 }
 
 void BP_GetStats(SIM_stats *curStats){
-	SIM_stats stats = btb->getStatsRef();
-	curStats->br_num =  stats.br_num;
-	curStats->flush_num = stats.flush_num;
-	curStats->size = stats.size;
+	curStats->br_num =  btb->getStatBrNum();
+	curStats->flush_num = btb->getStatFlushNum();
+	curStats->size = btb->getStatMemSize();
 
 	delete btb;
 }
