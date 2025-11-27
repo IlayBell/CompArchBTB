@@ -95,30 +95,28 @@ int calcTheoSize(int btbSize,
 				 bool isGlobalHist,
 				 bool isGlobalTable) {
 
-	int size = 0;
-    int entryBits = tagSize + PC_SIZE + 1;
-    int fsmBits = pow(2, historySize) * FSM_SIZE;
+	int entrySize = tagSize + PC_SIZE + 1;
+    int fsmBlockSize = pow(2, historySize) * FSM_SIZE;
+    int size = 0;
 
     if (isGlobalHist) {
         size += historySize;
+        size += btbSize * entrySize;
         if (isGlobalTable) {
-            size += fsmBits;
-            size += btbSize * entryBits;
+            size += fsmBlockSize;
         } else {
-            size += btbSize * fsmBits;
-            size += btbSize * entryBits;
+            size += btbSize * fsmBlockSize;
         }
-    } else {
-        entryBits += historySize;
-        if (isGlobalTable) {
-            size += fsmBits;
-            size += btbSize * entryBits;
-        } else {
-            size += btbSize * fsmBits;
-            size += btbSize * entryBits;
-        }
+        return size;
     }
 
+    size += btbSize * entrySize;
+    if (isGlobalTable) {
+        size += fsmBlockSize;
+    } else {
+        size += btbSize * fsmBlockSize;
+    }
+	
 	return size;
 }
 
@@ -466,10 +464,7 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 	// ADD BR+1
 	btb->updateBrNum();
 
-	// COUNTS MISSPREDICTIONS
-	if (targetPc != pred_dst) {
-		btb->addFlushes();
-	}
+	
 
 	int idx_len = log(btb->getBtbSize()); 
 	uint32_t idx = extractBits(pc, START_TAG_IDX, idx_len);
@@ -478,6 +473,11 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 								btb->getTagSize());
 
 	BTB_Entry& entry = btb->getEntryAtIdx(idx);
+
+	// COUNTS MISSPREDICTIONS
+	if (entry.getTarget() != pred_dst) {
+		btb->addFlushes();
+	}
 
 	// CHECKS IF EXSITS AND NOT COLLISION
 	if (entry.isEmpty() || !entry.compareTag(tag)) {
