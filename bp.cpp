@@ -8,6 +8,8 @@
 #define START_TAG_IDX 2
 #define PC_SIZE 32
 #define FLUSH_NUM 2
+#define ALIGNMENT_OFFSET 2
+#define VALID_SIZE 1
 
 // State space for prediction
 enum StateSpace {
@@ -96,32 +98,27 @@ int calcTheoSize(int btbSize,
 				 bool isGlobalFsm) {
 	
 	// Entry = tag + target(aligned 4 bits) + valid
-	int entrySize = tagSize + (PC_SIZE-2) + 1;
+	int entrySize = tagSize + (PC_SIZE-ALIGNMENT_OFFSET) + VALID_SIZE;
 	
 	// #FSM * FSM_SIZE(2bits)
     int fsmBlockSize = pow(2, historySize) * FSM_SIZE;
+	
+	// STARTS WITH PURE ENTRY TABLE SIZE
+	int size = entrySize * btbSize;
+	
+	// ADDS HISTORIES SIZE
+	if (isGlobalHist) {
+		size += historySize;
+	} else {
+		size += historySize * btbSize;
+	}
 
-	int size = btbSize * entrySize; // Table of preds
-
-	// GLOBAL HISTORY
-    if (isGlobalHist) {
-        size += historySize; // History once
-        
-
-        if (isGlobalFsm) {
-            size += fsmBlockSize; // FSMs once
-        } else {
-            size += btbSize * (fsmBlockSize+1); // FSMs for each entry
-        }
-        return size;
-    }
-
-	// LOCAL HISTORY
-    if (isGlobalFsm) {
-        size += fsmBlockSize;
-    } else {
-        size += btbSize * (fsmBlockSize + 1);
-    }
+	// ADDS FSMs SIZE
+	if (isGlobalFsm) {
+		size += fsmBlockSize;
+	} else {
+		size += fsmBlockSize * btbSize;
+	}
 
 	return size;
 }
@@ -381,7 +378,7 @@ class BTB {
 		}
 
 		void addFlushes() {
-			this->stats.flush_num += FLUSH_NUM;
+			this->stats.flush_num += 1;
 		}
 
 		int getStatBrNum() {
@@ -467,8 +464,13 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 }
 
 void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
-	// ADD BR+1
+	// UPDATE STATS
 	btb->updateBrNum();
+
+	// MISPREDICTION IS TARGET NOT AS IT SHOULD BE
+	if ((taken && (targetPc != pred_dst)) || (!taken && (pc + 4 != pred_dst))) {
+		btb->addFlushes();
+	}
 
 	
 
@@ -479,11 +481,6 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 								btb->getTagSize());
 
 	BTB_Entry& entry = btb->getEntryAtIdx(idx);
-
-	// COUNTS MISSPREDICTIONS
-	if (entry.getTarget() != pred_dst) {
-		btb->addFlushes();
-	}
 
 	// CHECKS IF EXSITS AND NOT COLLISION
 	if (entry.isEmpty() || !entry.compareTag(tag)) {
